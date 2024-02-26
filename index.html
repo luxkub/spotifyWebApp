@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Winnie's Spotify App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body onload="onPageLoad()">
+    <header>
+        <img src="logo.png" class="logo">
+    </header>
+    
+    <button id="loginButton" onclick="requestAuthorization()">
+        <img src="icon.svg" alt="spotify icon" class="spotifyIcon"> Log in to Spotify
+    </button>
+
+    <div id="artistsContainer" class="artists-container">
+        <div id="artistHeader" class="artist-header">
+        </div>
+    </div>
+
+    <div class="loading-icon" id="loading">
+        <div class="icon"></div>
+    </div>
+
+    <div id="overlay" class="load"></div>
+
+    <script src="app.js" defer></script>
+    <script>
+        function onPageLoad() {
+            client_id = localStorage.getItem("client_id");
+            client_secret = localStorage.getItem("client_secret");
+            access_token = localStorage.getItem("access_token"); // Get the access token
+
+            // Check if access token is not available
+            if (!access_token) {
+                const loginButton = document.getElementById("loginButton");
+                const artistsContainer = document.getElementById("artistsContainer");
+
+                // Show login button, hide other elements
+                if (loginButton) {
+                    loginButton.style.display = "block";
+                }
+                if (artistsContainer) {
+                    artistsContainer.innerHTML = ""; // Clear existing artists
+                }
+            } else {
+                // Access token is available, hide the login button
+                const loginButton = document.getElementById("loginButton");
+                if (loginButton) {
+                    loginButton.style.display = "none";
+                }
+
+                // Fetch and display top artists
+                displayTopArtists();
+            }
+        }
+
+        async function displayTopArtists() {
+            try {
+                const topArtists = await getTopArtists();
+
+                const artistsContainer = document.getElementById("artistsContainer");
+                if (!artistsContainer) return;
+
+                // Clear existing content
+                artistsContainer.innerHTML = "";
+
+                // Create elements for each artist
+                topArtists.forEach(artist => {
+                    const artistElement = document.createElement("div");
+                    artistElement.classList.add("artist");
+
+                    const nameElement = document.createElement("div");
+                    nameElement.textContent = artist.name;
+                    nameElement.classList.add("artist-name");
+
+                    const imageElement = document.createElement("img");
+                    if (artist.images.length > 0) {
+                        imageElement.src = artist.images[0].url; // Use the first image
+                    }
+                    imageElement.classList.add("artist-image");
+
+                    // Append elements to the container
+                    artistElement.appendChild(imageElement);
+                    artistElement.appendChild(nameElement);
+                    artistsContainer.appendChild(artistElement);
+
+                    // Add click event listener to each artist element
+                    artistElement.addEventListener("click", () => {
+                        toggleArtistSelection(artist.name, artistElement);
+                    });
+                });
+
+                // Show the "Select your favorite artists" message
+                const selectMessage = document.getElementById("selectMessage");
+                if (selectMessage) {
+                    selectMessage.style.display = "block";
+                }
+
+            } catch (error) {
+                console.error("Error fetching and displaying top artists:", error);
+            }
+        }
+
+        function toggleArtistSelection(artistName, artistElement) {
+            const index = selectedArtists.indexOf(artistName);
+            if (index === -1) {
+                selectedArtists.push(artistName);
+                artistElement.classList.add("selected");
+            } else {
+                selectedArtists.splice(index, 1);
+                artistElement.classList.remove("selected");
+            }
+            console.log("Selected Artists:", selectedArtists);
+        }
+
+        // Rest of your JavaScript code...
+    </script>
+</body>
+
+</html>
