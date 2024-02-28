@@ -4,14 +4,18 @@ var client_secret = 'b433b06c56b24da5b27fcee34f269d5a';
 var access_token = null;
 var refresh_token = null;
 var currentPlaylist = "";
-var radioButtons = [];
-var topTracksIds = [];
+var savedTracks = [];
+var allsavedTracks = [];
+var savedTracksIds = [];
 var selectedArtists = []; // Array to store selected artist names
+var nextBatchLength = 0;
 
 const AUTHORIZE = "https://accounts.spotify.com/authorize";
 const TOKEN = "https://accounts.spotify.com/api/token";
 const loadingIcon = document.getElementById("loading");
-const overlay = document.getElementById("overlay");
+const progress = document.getElementById("progress");
+const createPlaylistButton = document.getElementById("createPlaylistButton");
+const artistsContainer = document.getElementById("artistsContainer");
 
 async function fetchWebApi(endpoint, method, body) {
     const res = await fetch(`https://api.spotify.com/${endpoint}`, {
@@ -24,14 +28,6 @@ async function fetchWebApi(endpoint, method, body) {
     return await res.json();
 }
 
-async function getTopTracks() {
-    const tracks = (await fetchWebApi(
-        'v1/me/top/tracks?time_range=long_term&limit=5', 'GET'
-    )).items;
-    topTracksIds = tracks.map(track => track.id);
-    return tracks;
-}
-
 async function getTopArtists() {
     const artists = (await fetchWebApi(
         'v1/me/top/artists?time_range=long_term&limit=20', 'GET'
@@ -41,7 +37,7 @@ async function getTopArtists() {
 
 async function getRecommendations() {
     return (await fetchWebApi(
-        `v1/recommendations?limit=5&seed_tracks=${topTracksIds.join(',')}`, 'GET'
+        `v1/recommendations?limit=5&seed_tracks=${savedTracksIds.join(',')}`, 'GET'
     )).tracks;
 }
 
@@ -72,31 +68,89 @@ async function createPlaylist(tracksUri) {
     }
 }
 
+async function getSavedTracks(offset = 0) {
+    const response = await fetchWebApi(
+        `v1/me/tracks?limit=50&offset=${offset}`, 'GET'
+    );
+
+    const tracks = response.items;
+    tracks.forEach(item => {
+        const track = item.track; // Access the 'track' object
+    });
+
+    console.log("Saved Songs:", tracks);
+    nextBatchLength = tracks.length; // Store the length of the next batch
+
+    return tracks;
+}
+
 async function init() {
     // Get the loading icon element
     const loadingIcon = document.getElementById("loading");
 
     // Show loading icon and overlay
+    artistsContainer.style.display = "none";
     loadingIcon.style.display = "block";
-    overlay.style.display = "block";
+    progress.style.display = "block";
 
     try {
+        // Hide other elements
+        createPlaylistButton.style.display = "none";
+        document.querySelector('.artists-header').style.display = 'none'; // Hide artists header
 
-        // Fetch user's top tracks
-        console.log("Fetching top artists...");
-        const topTracks = await getTopTracks();
-        const topArtists = await getTopArtists();
-        console.log("Top artists:", topArtists);
+        // Fetch all user's saved songs
+        console.log("Fetching saved songs...");
+        let offset = 0; // Initialize offset
+        allsavedTracks = await getSavedTracks(offset); // Fetch first set of songs
+
+        // Continue fetching until we get less than 50 songs
+        while (nextBatchLength >= 1) {
+            offset += 50; // Increment offset
+            const nextBatch = await getSavedTracks(offset); // Fetch next batch of songs
+            allsavedTracks = allsavedTracks.concat(nextBatch); // Combine batches
+        }
+
+        console.log("All Saved Songs:", allsavedTracks);
+
+        // Filter saved tracks based on selected artists
+        const selectedTracks = allsavedTracks.filter(track => {
+            return selectedArtists.includes(track.track.artists[0].name);
+        });
+
+        // Create a map to store 3 tracks per selected artist
+        const artistTracksMap = new Map();
+        selectedArtists.forEach(artist => {
+            artistTracksMap.set(artist, []);
+        });
+
+        // Populate the map with 3 tracks per artist
+        selectedTracks.forEach(track => {
+            const artistName = track.track.artists[0].name;
+            const artistTracks = artistTracksMap.get(artistName);
+            if (artistTracks.length < 3) {
+                artistTracks.push(track.track);
+            }
+        });
+
+        // Log the tracks per artist
+        artistTracksMap.forEach((tracks, artist) => {
+            console.log(`Artist: ${artist}`);
+            tracks.forEach((track, index) => {
+                console.log(`  Track ${index + 1}: ${track.name} - ID: ${track.id}`);
+                savedTracksIds.push(track.id); // Push the track ID to the array
+            });
+        });
 
         // Fetch recommended tracks
+        console.log("Saved tracks IDs:", savedTracksIds);
         const recommendedTracks = await getRecommendations();
         console.log("Recommended tracks:", recommendedTracks);
 
-        // Combine top tracks and recommended tracks alternately
+        // Combine saved songs and recommended tracks alternately
         const combinedTracks = [];
-        for (let i = 0; i < topTracks.length || i < recommendedTracks.length; i++) {
-            if (i < topTracks.length) {
-                combinedTracks.push(topTracks[i]);
+        for (let i = 0; i < selectedTracks.length || i < recommendedTracks.length; i++) {
+            if (i < selectedTracks.length) {
+                combinedTracks.push(selectedTracks[i].track); // Push the track object
             }
             if (i < recommendedTracks.length) {
                 combinedTracks.push(recommendedTracks[i]);
@@ -105,6 +159,12 @@ async function init() {
 
         // Shuffle the combined tracks array
         shuffleArray(combinedTracks);
+
+        // Log the names of the tracks
+        console.log("Combined tracks:");
+        combinedTracks.forEach((track, index) => {
+            console.log(`${index + 1}. ${track.name} - ${track.artists[0].name}`);
+        });
 
         // Creating playlist with combined tracks
         const tracksUri = combinedTracks.map(track => `spotify:track:${track.id}`);
@@ -115,21 +175,12 @@ async function init() {
         const spotifyPlaylist = document.getElementById("spotifyPlaylist");
         spotifyPlaylist.src = `https://open.spotify.com/embed/playlist/${createdPlaylist.id}?utm_source=generator&theme=0`;
 
-        // Hide loading icon at the end
-        if (loadingIcon) {
-            loadingIcon.style.display = "none";
-        }
-
-        // Display top artists
-        displayTopArtists();
-
     } catch (error) {
         console.error("Error initializing:", error);
         throw error;
     } finally {
-        // Remove loading icon and overlay
         loadingIcon.style.display = "none";
-        overlay.style.display = "none";
+        progress.style.display = "none";
     }
 }
 
@@ -139,15 +190,6 @@ function shuffleArray(array) {
         const j = Math.floor(Math.random() * (i + 1));
         [array[i], array[j]] = [array[j], array[i]];
     }
-}
-
-function handleRedirect() {
-    let code = getCode();
-    fetchAccessToken(code);
-    window.history.pushState("", "", redirect_uri); // remove param from url
-
-    // Call init to create playlist
-    init();
 }
 
 function getCode() {
@@ -216,7 +258,6 @@ function handleAuthorizationResponse() {
 
 function displayTopArtists() {
     getTopArtists().then(topArtists => {
-        const artistsContainer = document.getElementById("artistsContainer");
         if (!artistsContainer) return;
 
         // Create header element
@@ -262,6 +303,7 @@ function displayTopArtists() {
     }).catch(error => {
         console.error("Error fetching and displaying top artists:", error);
     });
+
 }
 
 function toggleArtistSelection(artistElement, artistName) {
@@ -278,6 +320,12 @@ function toggleArtistSelection(artistElement, artistName) {
         artistElement.classList.add("selected");
     }
 
+    if (selectedArtists.length >= 1) {
+        createPlaylistButton.style.display = "block";
+    } else {
+        createPlaylistButton.style.display = "none";
+    }
+
     console.log("Selected Artists:", selectedArtists);
 }
 
@@ -288,3 +336,7 @@ window.onload = function () {
         fetchAccessToken(code);
     }
 };
+
+function redirectToHomePage() {
+    window.location.href = "http://127.0.0.1:5500/index.html";
+}
