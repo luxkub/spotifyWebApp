@@ -43,7 +43,7 @@ async function createPlaylist(tracksUri) {
 
         const playlist = await fetchWebApi(
             `v1/users/${user_id}/playlists`, 'POST', {
-            "name": "My recommendation playlist",
+            "name": "For you",
             "description": generatePlaylistDescription(selectedArtists),
             "public": false
         },
