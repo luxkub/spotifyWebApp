@@ -13,9 +13,15 @@
         <img src="logo.png" class="logo" id="logo" onclick="redirectToHomePage()">
     </header>
 
-    <button id="loginButton" onclick="requestAuthorization()">
-        <img src="icon.svg" alt="spotify icon" class="spotifyIcon"> Log in to Spotify
-    </button>
+    <div id="landing-page-content">
+        <h1>Welcome to Winnie's Spotify App!</h1>
+        <p>Discover new music and create personalized playlists based on your favorite artists.</p>
+        <p>Log in with your Spotify account to get started:</p>
+
+        <button id="loginButton" onclick="requestAuthorization()">
+            <img src="icon.svg" alt="spotify icon" class="spotifyIcon"> Log in to Spotify
+        </button>
+    </div>
 
     <div id="artistsContainer" class="artists-container">
         <div id="artistHeader" class="artist-header">
@@ -59,14 +65,16 @@
 
     <div id="overlay" class="load"></div>
 
+    <div id="playlistContainer"></div>
+
     <script src="app.js" defer></script>
     <script>
         function onPageLoad() {
+            document.getElementById("landing-page-content").style.display = "none";
             client_id = localStorage.getItem("client_id");
             client_secret = localStorage.getItem("client_secret");
             access_token = localStorage.getItem("access_token"); // Get the access token
 
-            loginButton.style.display = "none";
             // Fetch and display top artists
             displayTopArtists();
         }

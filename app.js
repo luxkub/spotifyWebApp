@@ -1,6 +1,6 @@
-var redirect_uri = "http://127.0.0.1:5500/index.html";
-var client_id = '3a0286a765f04d20b83a8c4089d74e35';
-var client_secret = 'b433b06c56b24da5b27fcee34f269d5a';
+var redirect_uri = "YOUR REDIRECT URI HERE";
+var client_id = 'YOUR CLIENT ID HERE';
+var client_secret = 'YOUR CLIENT SECRET HERE';
 var access_token = null;
 var refresh_token = null;
 var currentPlaylist = "";
@@ -9,10 +9,12 @@ var allsavedTracks = [];
 var savedTracksIds = [];
 var selectedArtists = []; // Array to store selected artist names
 var nextBatchLength = 0;
+var ArtistTracks = [];
+var playlistTracksIds = [];
 
 const AUTHORIZE = "https://accounts.spotify.com/authorize";
 const TOKEN = "https://accounts.spotify.com/api/token";
-const loadingIcon = document.getElementById("loading");
+const loading = document.getElementById("loading");
 const progress = document.getElementById("progress");
 const createPlaylistButton = document.getElementById("createPlaylistButton");
 const artistsContainer = document.getElementById("artistsContainer");
@@ -35,12 +37,6 @@ async function getTopArtists() {
     return artists;
 }
 
-async function getRecommendations() {
-    return (await fetchWebApi(
-        `v1/recommendations?limit=5&seed_tracks=${savedTracksIds.join(',')}`, 'GET'
-    )).tracks;
-}
-
 async function createPlaylist(tracksUri) {
     try {
         const { id: user_id } = await fetchWebApi('v1/me', 'GET');
@@ -48,18 +44,28 @@ async function createPlaylist(tracksUri) {
         const playlist = await fetchWebApi(
             `v1/users/${user_id}/playlists`, 'POST', {
             "name": "My recommendation playlist",
-            "description": "Playlist created by the tutorial on developer.spotify.com",
+            "description": generatePlaylistDescription(selectedArtists),
             "public": false
-        });
+        },
+        );
 
         if (!playlist || !playlist.id) {
             throw new Error("Playlist ID not found");
         }
 
-        await fetchWebApi(
-            `v1/playlists/${playlist.id}/tracks?uris=${tracksUri.join(',')}`,
-            'POST'
-        );
+        // Convert tracks URIs to objects with URIs
+        const tracks = tracksUri.map(uri => ({ "uri": uri }));
+
+        // Add tracks one by one to ensure they are added sequentially
+        for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+            await fetchWebApi(
+                `v1/playlists/${playlist.id}/tracks`,
+                'POST',
+                { "uris": [track.uri] }, // Each track should be added as an array
+                localStorage.getItem("access_token")
+            );
+        }
 
         return playlist;
     } catch (error) {
@@ -84,104 +90,191 @@ async function getSavedTracks(offset = 0) {
     return tracks;
 }
 
-async function init() {
-    // Get the loading icon element
-    const loadingIcon = document.getElementById("loading");
-
-    // Show loading icon and overlay
-    artistsContainer.style.display = "none";
-    loadingIcon.style.display = "block";
-    progress.style.display = "block";
-
+async function createPlaylist(tracksUri) {
     try {
-        // Hide other elements
-        createPlaylistButton.style.display = "none";
-        document.querySelector('.artists-header').style.display = 'none'; // Hide artists header
+        const { id: user_id } = await fetchWebApi('v1/me', 'GET');
 
-        // Fetch all user's saved songs
-        console.log("Fetching saved songs...");
-        let offset = 0; // Initialize offset
-        allsavedTracks = await getSavedTracks(offset); // Fetch first set of songs
+        const playlist = await fetchWebApi(
+            `v1/users/${user_id}/playlists`, 'POST', {
+            "name": "My recommendation playlist",
+            "description": generatePlaylistDescription(selectedArtists),
+            "public": false
+        },
+        );
 
-        // Continue fetching until we get less than 50 songs
-        while (nextBatchLength >= 1) {
-            offset += 50; // Increment offset
-            const nextBatch = await getSavedTracks(offset); // Fetch next batch of songs
-            allsavedTracks = allsavedTracks.concat(nextBatch); // Combine batches
+        if (!playlist || !playlist.id) {
+            throw new Error("Playlist ID not found");
         }
 
-        console.log("All Saved Songs:", allsavedTracks);
+        // Convert tracks URIs to objects with URIs
+        const tracks = tracksUri.map(uri => ({ "uri": uri }));
 
-        // Filter saved tracks based on selected artists
-        const selectedTracks = allsavedTracks.filter(track => {
-            return selectedArtists.includes(track.track.artists[0].name);
-        });
-
-        // Create a map to store 3 tracks per selected artist
-        const artistTracksMap = new Map();
-        selectedArtists.forEach(artist => {
-            artistTracksMap.set(artist, []);
-        });
-
-        // Populate the map with 3 tracks per artist
-        selectedTracks.forEach(track => {
-            const artistName = track.track.artists[0].name;
-            const artistTracks = artistTracksMap.get(artistName);
-            if (artistTracks.length < 3) {
-                artistTracks.push(track.track);
-            }
-        });
-
-        // Log the tracks per artist
-        artistTracksMap.forEach((tracks, artist) => {
-            console.log(`Artist: ${artist}`);
-            tracks.forEach((track, index) => {
-                console.log(`  Track ${index + 1}: ${track.name} - ID: ${track.id}`);
-                savedTracksIds.push(track.id); // Push the track ID to the array
-            });
-        });
-
-        // Fetch recommended tracks
-        console.log("Saved tracks IDs:", savedTracksIds);
-        const recommendedTracks = await getRecommendations();
-        console.log("Recommended tracks:", recommendedTracks);
-
-        // Combine saved songs and recommended tracks alternately
-        const combinedTracks = [];
-        for (let i = 0; i < selectedTracks.length || i < recommendedTracks.length; i++) {
-            if (i < selectedTracks.length) {
-                combinedTracks.push(selectedTracks[i].track); // Push the track object
-            }
-            if (i < recommendedTracks.length) {
-                combinedTracks.push(recommendedTracks[i]);
-            }
+        // Add tracks one by one to ensure they are added sequentially
+        for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+            await fetchWebApi(
+                `v1/playlists/${playlist.id}/tracks`,
+                'POST',
+                { "uris": [track.uri] }, // Each track should be added as an array
+                localStorage.getItem("access_token")
+            );
         }
 
-        // Shuffle the combined tracks array
-        shuffleArray(combinedTracks);
-
-        // Log the names of the tracks
-        console.log("Combined tracks:");
-        combinedTracks.forEach((track, index) => {
-            console.log(`${index + 1}. ${track.name} - ${track.artists[0].name}`);
-        });
-
-        // Creating playlist with combined tracks
-        const tracksUri = combinedTracks.map(track => `spotify:track:${track.id}`);
-
-        const createdPlaylist = await createPlaylist(tracksUri);
-
-        // Update the src attribute of the iframe with the new playlist ID
-        const spotifyPlaylist = document.getElementById("spotifyPlaylist");
-        spotifyPlaylist.src = `https://open.spotify.com/embed/playlist/${createdPlaylist.id}?utm_source=generator&theme=0`;
-
+        return playlist;
     } catch (error) {
-        console.error("Error initializing:", error);
+        console.error("Error creating playlist:", error);
         throw error;
-    } finally {
-        loadingIcon.style.display = "none";
-        progress.style.display = "none";
     }
+}
+
+function generatePlaylistDescription(artists) {
+    if (artists.length === 1) {
+        return `A personalized playlist featuring ${artists[0]} and more`;
+    } else if (artists.length === 2) {
+        return `A personalized playlist featuring ${artists[0]}, ${artists[1]}, and more`;
+    } else {
+        return `A personalized playlist featuring ${artists[0]}, ${artists[1]}, ${artists[2]} and more`;
+
+    }
+}
+
+async function getSavedTracks(offset = 0) {
+    const response = await fetchWebApi(
+        `v1/me/tracks?limit=50&offset=${offset}`, 'GET'
+    );
+
+    const tracks = response.items;
+    tracks.forEach(item => {
+        const track = item.track; // Access the 'track' object
+    });
+
+    console.log("Saved Songs:", tracks);
+    nextBatchLength = tracks.length; // Store the length of the next batch
+
+    return tracks;
+}
+
+async function init() {
+    // Scroll to the top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const header = document.querySelector(".artists-header");
+    header.style.display = "none";
+    createPlaylistButton.style.display = "none";
+    artistsContainer.style.display = "none";
+    loading.style.display = "block";
+    progress.style.display = "block";
+    console.log("Fetching saved songs...");
+    let offset = 0; // Initialize offset
+    allsavedTracks = await getSavedTracks(offset); // Fetch first set of songs
+
+    // Continue fetching until we get less than 50 songs or reach 2000
+    while (nextBatchLength >= 1 && allsavedTracks.length < 2000) {
+        offset += 50; // Increment offset
+        const nextBatch = await getSavedTracks(offset); // Fetch next batch of songs
+        allsavedTracks = allsavedTracks.concat(nextBatch); // Combine batches
+    }
+
+    // Limit to first 2000 tracks
+    allsavedTracks = allsavedTracks.slice(0, 2000);
+
+    console.log("All Saved Songs (up to 2000):", allsavedTracks); // Log all saved songs
+
+    // Filter saved tracks based on selected artists
+    const selectedTracks = allsavedTracks.filter(track => {
+        return selectedArtists.includes(track.track.artists[0].name);
+    });
+
+    console.log("Selected Tracks:", selectedTracks); // Log selected tracks
+
+    // Create a map to store all tracks by each selected artist
+    const artistTracksMap = new Map();
+    selectedArtists.forEach(artist => {
+        const tracksByArtist = selectedTracks.filter(track => track.track.artists[0].name === artist).map(track => track.track);
+        artistTracksMap.set(artist, tracksByArtist);
+    });
+
+    console.log("Artist Tracks Map:", artistTracksMap); // Log artist tracks map
+
+    // Clear existing playlistTracksIds
+    playlistTracksIds = [];
+
+    for (const [artist, tracks] of artistTracksMap) {
+        // Get 3 random tracks from the artist's saved tracks
+        const randomArtistTracks = getRandomTracks(tracks, 3);
+        console.log("Random Tracks for", artist, ":", randomArtistTracks);
+
+        for (const track of randomArtistTracks) {
+            console.log(`${track.name} by ${track.artists.map(artist => artist.name).join(', ')}`);
+
+            // Get recommendations for each random track
+            const recommendations = await getRecommendations(track.id);
+            if (recommendations.length > 0) {
+                const recommendedTrack = recommendations[0]; // Get the first recommendation
+                console.log("Recommended Track for", track.id, ":", recommendedTrack);
+                playlistTracksIds.push(recommendedTrack.id); // Add recommended track ID to playlistTracksIds
+            }
+        }
+
+        // Add random track IDs to playlistTracksIds
+        playlistTracksIds.push(...randomArtistTracks.map(track => track.id));
+    }
+
+    console.log("Playlist Tracks IDs before shuffle:", playlistTracksIds); // Log playlist tracks IDs before shuffle
+
+    // Shuffling the playlistTracksIds array
+    shuffleArray(playlistTracksIds);
+
+    console.log("Playlist Tracks IDs after shuffle:", playlistTracksIds); // Log playlist tracks IDs after shuffle
+
+    // Creating playlist with playlistTracksIds
+    const tracksUri = playlistTracksIds.map(trackId => `spotify:track:${trackId}`);
+
+    // Create a playlist with the combined tracks
+    const createdPlaylist = await createPlaylist(tracksUri);
+    console.log("Created Playlist:", createdPlaylist);
+
+    loading.style.display = "none";
+    progress.style.display = "none";
+
+    // Display the playlist
+    const playlistContainer = document.getElementById("playlistContainer");
+    if (playlistContainer) {
+        const playlistId = createdPlaylist.id; // Assuming createdPlaylist has the playlist ID
+        const iframe = document.createElement("iframe");
+        iframe.title = "Spotify Embed: Recommendation Playlist";
+        iframe.src = `https://open.spotify.com/embed/playlist/${playlistId}?utm_source=generator&theme=0`;
+        iframe.width = "100%";
+        iframe.height = "100%";
+        iframe.style.minHeight = "360px";
+        iframe.frameBorder = "0";
+        iframe.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture";
+        iframe.loading = "lazy";
+
+        playlistContainer.appendChild(iframe);
+    }
+}
+
+async function getRecommendations(trackId) {
+    // Fetching recommendations based on a track
+    const recommendations = await fetchWebApi(
+        `v1/recommendations?limit=1&seed_tracks=${trackId}`, 'GET'
+    );
+    return recommendations.tracks;
+}
+
+async function getRecommendationsForArtist(artistTracks) {
+    // Get random tracks from the artist's saved tracks
+    const randomTracks = getRandomTracks(artistTracks, 3); // Get 3 random tracks
+    return randomTracks;
+}
+
+function getRandomTracks(tracks, count) {
+    if (tracks.length <= count) {
+        return tracks;
+    }
+    const shuffled = tracks.sort(() => 0.5 - Math.random()); // Shuffle the array
+    return shuffled.slice(0, count); // Get the first 'count' items
 }
 
 // Function to shuffle array
@@ -338,5 +431,5 @@ window.onload = function () {
 };
 
 function redirectToHomePage() {
-    window.location.href = "http://127.0.0.1:5500/index.html";
+    window.location.href = "YOUR REDIRECT URI HERE";
 }
